@@ -100,9 +100,10 @@ int setresuid(uid_t ruid, uid_t euid, uid_t suid)
 	if (isRootApplication(ruid))
 	{
         pid = getpid();
-        dropCapabilitiesBoundingSet();
         return 0;
     }
+
+    dropCapabilitiesBoundingSet();
 
 	if (origin_setresuid == NULL)
 		origin_setresuid = dlsym(RTLD_NEXT, "setresuid");
