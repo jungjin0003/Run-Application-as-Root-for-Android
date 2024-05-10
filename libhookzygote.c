@@ -97,8 +97,8 @@ int prctl(int option, ...)
 
 int setresuid(uid_t ruid, uid_t euid, uid_t suid)
 {
-	if (isRootApplication(ruid))
-	{
+    if (isRootApplication(ruid))
+    {
         pid = getpid();
         return 0;
     }
