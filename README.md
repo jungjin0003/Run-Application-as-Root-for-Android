@@ -16,11 +16,15 @@ Please follow the following procedure to use RARA
  - Android NDK version 21 (Errors may occur in later version, Someone tell me how should change the code)
 
 ### Setting ANDROID_NDK_ROOT
-Setting ANDROID_NDK_ROOT variable in Makefile.
-Default Android API Version is 21 but you can change it
+Setting ANDROID_NDK_ROOT variable in Makefile. Default Android API Version is 21 but you can change it \
+If you aren't using Windows, change the path of the CC variable
 ```makefile
 ANDROID_NDK_ROOT=
 ANDROID_API_VERSION=21
+
+CC=$(ANDROID_NDK_ROOT)/toolchains/llvm/prebuilt/windows-x86_64/bin/clang
+                                                ~~~~~~~~~~~~~~
+                                                Change to your OS
 ```
 
 ### Let's Build!!
