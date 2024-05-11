@@ -278,8 +278,6 @@ int manipulation_zygote64_envp(pid_t zygote_pid)
 
 int main()
 {
-    printf("PID : %d\n", getpid());
-
     pid_t zygote_pid = get_zygote_pid();
 
     puts("[*] Get the zygote64 pid...");
