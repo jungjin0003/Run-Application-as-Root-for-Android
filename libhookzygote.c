@@ -57,8 +57,11 @@ int isRootApplication(pid_t uid)
     }
 
 exit:
-    fclose(package_list);
-    fclose(root_app_list);
+    if (package_list != NULL)
+        fclose(package_list);
+
+    if (root_app_list != NULL)
+        fclose(root_app_list);
     
     return 0;
 }
