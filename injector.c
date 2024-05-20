@@ -230,9 +230,8 @@ int generate_new_zygote(pid_t zygote_pid)
     return zygote_pid;
 }
 
-int manipulation_zygote64_envp(pid_t zygote_pid)
+void manipulation_zygote64_envp(pid_t zygote_pid)
 {
-    int ret = 0;
     struct user_regs_struct regs;
     struct iovec iovecs;
     iovecs.iov_base = &regs;
@@ -241,7 +240,7 @@ int manipulation_zygote64_envp(pid_t zygote_pid)
     if (PTRACE(PTRACE_ATTACH, zygote_pid, 1, NULL) < 0)
     {
         printf("[-] New zygote64 attach failed\n");
-        return ret;
+        return;
     }
 
     while (1)
@@ -289,8 +288,6 @@ int manipulation_zygote64_envp(pid_t zygote_pid)
     }
 
     PTRACE(PTRACE_DETACH, zygote_pid, NULL, NULL);
-
-    return ret;
 }
 
 int main()
