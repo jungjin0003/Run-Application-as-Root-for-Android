@@ -14,33 +14,46 @@
 
 #define INIT_PID 1
 #define MAX_PID 32768
+
+#define ARM 0
+#define AARCH64 1
+
 #define PTRACE(r, p, a, d) internal_ptrace(r, p, a, d)
 
-int get_zygote_pid()
+int status;
+
+void handler(int sig)
+{
+    if (sig == SIGUSR1)
+        status = 1;
+    else if (sig == SIGUSR2)
+        status = 2;
+}
+
+int get_zygote_pid(int arch)
 {
     char fname[64];
-    char status[64];
-    int i, zygote_pid;
+    char data[64];
+    int zygote_pid = -1;
     FILE *fp = NULL;
 
-    zygote_pid = -1;
-
-    for (i = 0; i < MAX_PID; i++)
+    for (int i = 0; i < MAX_PID && zygote_pid == -1; i++)
     {
         snprintf(fname, sizeof(fname), "/proc/%d/cmdline", i);
-        if ((fp = fopen(fname, "r")) == NULL)
+        fp = fopen(fname, "r");
+
+        if (fp == NULL)
             continue;
-        if (fgets(status, sizeof(status), fp) != NULL)
+
+        if (fgets(data, sizeof(data), fp) != NULL)
         {
-            if (strstr(status, "zygote64") != NULL)
-            {
+            if (strcmp(data, arch ? "zygote64" : "zygote") == NULL)
                 zygote_pid = i;
-                fclose(fp);
-                break;
-            }
         }
+
         fclose(fp);
     }
+
     return zygote_pid;
 }
 
@@ -109,7 +122,7 @@ void *monitor_new_zygote(void *arg)
     while (1)
     {
         sleep(1);
-        cur_zygote_pid = get_zygote_pid();
+        cur_zygote_pid = get_zygote_pid(status);
 
         if (cur_zygote_pid == -1)
             continue;
@@ -129,7 +142,7 @@ void *monitor_new_zygote(void *arg)
 
         while (fgets(line, sizeof(line), fp) != NULL)
         {
-            if (strstr(line, "libhookzygote.so"))
+            if (strstr(line, "libhookzygote"))
             {
                 bSuccessLD_PRELOAD = 1;
                 break;
@@ -138,7 +151,10 @@ void *monitor_new_zygote(void *arg)
 
         fclose(fp);
 
-        if (bSuccessLD_PRELOAD)
+        if (bSuccessLD_PRELOAD && arg == NULL)
+            break;
+
+        if (bSuccessLD_PRELOAD && arg && status == 2)
             break;
 
         if (!bSuccessLD_PRELOAD && arg)
@@ -241,10 +257,12 @@ int manipulation_zygote64_envp(pid_t zygote_pid)
 
             printf("[*] detect execve : %s\n", filename);
 
-            if (strcmp(filename, "/system/bin/app_process64"))
+            if (strcmp(filename, "/system/bin/app_process32") && status != 1)
+                break;
+            else if (strcmp(filename, "/system/bin/app_process64") && status != 0)
                 break;
 
-            ret = 1;
+            kill(getppid(), status ? SIGUSR2 : SIGUSR1);
 
             for (int i = 0, *envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.regs[2] + i * sizeof(void *), NULL); envp; envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.regs[2] + i * sizeof(void *), NULL))
             {
@@ -257,7 +275,7 @@ int manipulation_zygote64_envp(pid_t zygote_pid)
                 if (strncmp("LD_PRELOAD", env, 10) == 0)
                 {
                     PTRACE(PTRACE_POKEDATA, zygote_pid, regs.regs[2] + (i - 1) * sizeof(void *), regs.sp - 2048);
-                    strcat(env, ":/data/local/tmp/libhookzygote.so");
+                    strcat(env, status ? ":/data/local/tmp/libhookzygote64.so" : ":/data/local/tmp/libhookzygote32.so");
 
                     write_string(zygote_pid, regs.sp - 2048, env);
                 }
@@ -278,13 +296,16 @@ int manipulation_zygote64_envp(pid_t zygote_pid)
 
 int main()
 {
-    pid_t zygote_pid = get_zygote_pid();
+    signal(SIGUSR1, handler);
+    signal(SIGUSR2, handler);
 
-    puts("[*] Get the zygote64 pid...");
+    pid_t zygote_pid = get_zygote_pid(ARM);
+
+    puts("[*] Get the zygote pid...");
 
     if (zygote_pid == -1)
     {
-        puts("[-] Not found zygote64 process...");
+        puts("[-] Not found zygote process...");
         return -1;
     }
 
