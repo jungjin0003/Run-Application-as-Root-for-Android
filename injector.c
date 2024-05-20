@@ -233,7 +233,6 @@ int generate_new_zygote(pid_t zygote_pid)
 int manipulation_zygote64_envp(pid_t zygote_pid)
 {
     int ret = 0;
-    char LD_PRELOAD[128] = { 0 };
     struct user_regs_struct regs;
     struct iovec iovecs;
     iovecs.iov_base = &regs;
