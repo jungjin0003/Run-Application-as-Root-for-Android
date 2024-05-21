@@ -3,8 +3,6 @@ A library that helps you run Android applications on root
 
 ## Supported Android Versions
 The Android versions that have confirmed the current behavior are as follows
-
-Currently, only aarch64 of Zygote are supported (Can't supported armv7a of applications yet)
 |       Arch | Version           |
 |-----------:|:------------------|
 |     ARMv7a | 7.1 (Nougat)      |
