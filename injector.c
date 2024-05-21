@@ -18,6 +18,17 @@
 #define ARM             0
 #define AARCH64         1
 
+#ifdef __arm__
+#define REGS            regs
+#define IS_RETURNED     1
+#define RETURN_VALUE    ARM_r0
+#define SYSCALL_NUMBER  ARM_r7
+#define CHECK_RETURNED  uregs[12]
+#define STACK_POINTER   ARM_sp
+#define ARG0            ARM_r0
+#define ARG2            ARM_r2
+#elif __aarch64__
+#define PTRACE_GETREGS  PTRACE_GETREGSET
 #define REGS            iovecs
 #define IS_RETURNED     0
 #define RETURN_VALUE    regs[0]
@@ -26,11 +37,12 @@
 #define STACK_POINTER   sp
 #define ARG0            regs[0]
 #define ARG2            regs[2]
+#endif
 
 #define PTRACE(r, p, a, d) internal_ptrace(r, p, a, d)
 
 int status;
-
+#ifdef __aarch64__
 void handler(int sig)
 {
     if (sig == SIGUSR1)
@@ -38,7 +50,7 @@ void handler(int sig)
     else if (sig == SIGUSR2)
         status = 2;
 }
-
+#endif
 int get_zygote_pid(int arch)
 {
     char fname[64];
@@ -159,13 +171,16 @@ void *monitor_new_zygote(void *arg)
         }
 
         fclose(fp);
-
+#ifdef __arm__
+        if (bSuccessLD_PRELOAD)
+            break;
+#elif __aarch64__
         if (bSuccessLD_PRELOAD && arg == NULL)
             break;
 
         if (bSuccessLD_PRELOAD && arg && status == 2)
             break;
-
+#endif
         if (!bSuccessLD_PRELOAD && arg)
             kill(cur_zygote_pid, SIGKILL);
     }
@@ -175,10 +190,14 @@ void *monitor_new_zygote(void *arg)
 
 int generate_new_zygote(pid_t zygote_pid)
 {
+#ifdef __arm__
+    struct user_regs regs;
+#elif __aarch64__
     struct user_regs_struct regs;
     struct iovec iovecs;
     iovecs.iov_base = &regs;
     iovecs.iov_len = sizeof(regs);
+#endif
 
     siginfo_t sig;
 
@@ -241,12 +260,18 @@ int generate_new_zygote(pid_t zygote_pid)
     return zygote_pid;
 }
 
-void manipulation_zygote64_envp(pid_t zygote_pid)
+void manipulation_zygote_envp(pid_t zygote_pid)
 {
+#ifdef __arm__
+    #define REGS regs
+    struct user_regs regs;
+#elif __aarch64__
+    #define REGS iovecs
     struct user_regs_struct regs;
     struct iovec iovecs;
     iovecs.iov_base = &regs;
     iovecs.iov_len = sizeof(regs);
+#endif
 
     if (PTRACE(PTRACE_ATTACH, zygote_pid, 1, NULL) < 0)
     {
@@ -257,7 +282,7 @@ void manipulation_zygote64_envp(pid_t zygote_pid)
     while (1)
     {
         PTRACE(PTRACE_SYSCALL, zygote_pid, 1, NULL);
-        PTRACE(PTRACE_GETREGSET, zygote_pid, NT_PRSTATUS, &REGS);
+        PTRACE(PTRACE_GETREGS, zygote_pid, NT_PRSTATUS, &REGS);
 
         if (regs.SYSCALL_NUMBER == SYS_execve)
         {
@@ -265,14 +290,17 @@ void manipulation_zygote64_envp(pid_t zygote_pid)
             read_string(zygote_pid, regs.ARG0, filename, sizeof(filename));
 
             printf("[*] detect execve : %s\n", filename);
-
+#ifdef __arm__
+            if (strcmp(filename, "/system/bin/app_process"))
+                break;
+#elif __aarch64__
             if (strcmp(filename, "/system/bin/app_process32") && status != 1)
                 break;
             else if (strcmp(filename, "/system/bin/app_process64") && status != 0)
                 break;
 
             kill(getppid(), status ? SIGUSR2 : SIGUSR1);
-
+#endif
             for (int i = 0, *envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.ARG2 + i * sizeof(void *), NULL); envp; envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.ARG2 + i * sizeof(void *), NULL))
             {
                 char *env = malloc(1024);
@@ -303,9 +331,10 @@ void manipulation_zygote64_envp(pid_t zygote_pid)
 
 int main()
 {
+#ifdef __aarch64__
     signal(SIGUSR1, handler);
     signal(SIGUSR2, handler);
-
+#endif
     pid_t zygote_pid = get_zygote_pid(ARM);
 
     puts("[*] Get the zygote pid...");
@@ -317,7 +346,7 @@ int main()
     }
 
     zygote_pid = generate_new_zygote(zygote_pid);
-    manipulation_zygote64_envp(zygote_pid);
+    manipulation_zygote_envp(zygote_pid);
 
     return 0;
 }
