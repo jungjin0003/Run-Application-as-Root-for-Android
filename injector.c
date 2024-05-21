@@ -12,11 +12,20 @@
 #include <sys/types.h>
 #include <sys/syscall.h>
 
-#define INIT_PID 1
-#define MAX_PID 32768
+#define INIT_PID        1
+#define MAX_PID         32768
 
-#define ARM 0
-#define AARCH64 1
+#define ARM             0
+#define AARCH64         1
+
+#define REGS            iovecs
+#define IS_RETURNED     0
+#define RETURN_VALUE    regs[0]
+#define SYSCALL_NUMBER  regs[8]
+#define CHECK_RETURNED  regs[28]
+#define STACK_POINTER   sp
+#define ARG0            regs[0]
+#define ARG2            regs[2]
 
 #define PTRACE(r, p, a, d) internal_ptrace(r, p, a, d)
 
@@ -197,19 +206,21 @@ int generate_new_zygote(pid_t zygote_pid)
 
         memset(&regs, NULL, sizeof(regs));
 
-        if (PTRACE(PTRACE_GETREGSET, INIT_PID, NT_PRSTATUS, &iovecs) < 0)
+        if (PTRACE(PTRACE_GETREGSET, INIT_PID, NT_PRSTATUS, &REGS) < 0)
         {
             puts("[-] Can't get process register information");
             return -1;
         }
 
-        if (regs.regs[8] == SYS_clone && regs.regs[28] == 0 && regs.regs[0] <= MAX_PID && zygote_pid != regs.regs[0])
+        if (regs.SYSCALL_NUMBER == SYS_clone && regs.CHECK_RETURNED == IS_RETURNED && regs.RETURN_VALUE <= MAX_PID && zygote_pid != regs.RETURN_VALUE)
         {
+            zygote_pid = regs.RETURN_VALUE;
+
             if (fork() == 0)
             {
                 pthread_create(&thread_t, NULL, monitor_new_zygote, NULL);
-                printf("[*] Found a new process : %ld\n", regs.regs[0]);
-                zygote_pid = regs.regs[0];
+                printf("[*] Found a new process : %ld\n", regs.RETURN_VALUE);
+                zygote_pid = regs.RETURN_VALUE;
                 return zygote_pid;
             }
             else
@@ -246,12 +257,12 @@ void manipulation_zygote64_envp(pid_t zygote_pid)
     while (1)
     {
         PTRACE(PTRACE_SYSCALL, zygote_pid, 1, NULL);
-        PTRACE(PTRACE_GETREGSET, zygote_pid, NT_PRSTATUS, &iovecs);
+        PTRACE(PTRACE_GETREGSET, zygote_pid, NT_PRSTATUS, &REGS);
 
-        if (regs.regs[8] == SYS_execve)
+        if (regs.SYSCALL_NUMBER == SYS_execve)
         {
             char filename[100];
-            read_string(zygote_pid, regs.regs[0], filename, sizeof(filename));
+            read_string(zygote_pid, regs.ARG0, filename, sizeof(filename));
 
             printf("[*] detect execve : %s\n", filename);
 
@@ -262,7 +273,7 @@ void manipulation_zygote64_envp(pid_t zygote_pid)
 
             kill(getppid(), status ? SIGUSR2 : SIGUSR1);
 
-            for (int i = 0, *envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.regs[2] + i * sizeof(void *), NULL); envp; envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.regs[2] + i * sizeof(void *), NULL))
+            for (int i = 0, *envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.ARG2 + i * sizeof(void *), NULL); envp; envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.ARG2 + i * sizeof(void *), NULL))
             {
                 char *env = malloc(1024);
                 memset(env, NULL, 1024);
@@ -272,10 +283,10 @@ void manipulation_zygote64_envp(pid_t zygote_pid)
 
                 if (strncmp("LD_PRELOAD", env, 10) == 0)
                 {
-                    PTRACE(PTRACE_POKEDATA, zygote_pid, regs.regs[2] + (i - 1) * sizeof(void *), regs.sp - 2048);
+                    PTRACE(PTRACE_POKEDATA, zygote_pid, regs.ARG2 + (i - 1) * sizeof(void *), regs.STACK_POINTER - 2048);
                     strcat(env, status ? ":/data/local/tmp/libhookzygote64.so" : ":/data/local/tmp/libhookzygote32.so");
 
-                    write_string(zygote_pid, regs.sp - 2048, env);
+                    write_string(zygote_pid, regs.STACK_POINTER - 2048, env);
                 }
 
                 free(env);
