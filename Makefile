@@ -24,10 +24,10 @@ else
 	@cp bin/armv7a/libhookzygote.so bin/aarch64/libhookzygote32.so
 endif
 
-%32.o : %.c
+%32.o: %.c
 	$(CC) $(CFLAGS) -fPIC -m32 -c -o $@ $^
 
-%64.o : %.c
+%64.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $^
 
 run:
