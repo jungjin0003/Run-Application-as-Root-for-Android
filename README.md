@@ -34,13 +34,21 @@ endif                                           ~~~~~~~~~~~~
 $ make
 ```
 
-### Push compiled files
-RARA requires `/data/local/tmp` directory
+### RARA Install
+If the adb path is not registered in the PATH environment variable, please set the entire path of adb in the registration or ADB environment variable \
+\
+Windows
 ```
-$ adb root
-$ adb shell mkdir /data/local/tmp
-$ adb push injector /data/local/tmp
-$ adb push libhookzygote.so /data/local/tmp
+$ make install
+or
+$ set ADB=C:\PATH\TO\YOURS\adb.exe
+$ make install
+```
+Linux
+```
+$ make install
+or
+$ ADB=/PATH/TO/YOURS/adb make install
 ```
 
 ### Change SELinux mode
@@ -105,7 +113,7 @@ Write the package name of the application to run as root in a file named root_ap
 # pwd
 /data/local/tmp
 # ls
-injector    libhookzygote.so    root_app.list
+injector    root_app.list
 # cat root_app.list
 org.qtproject.example.PoC_libpcap
 org.qtproject.example.PoC_TcpPort80
