@@ -9,6 +9,8 @@ endif
 CFLAGS = -target aarch64-linux-android$(ANDROID_API_VERSION) -w
 LDFLAGS = $(CFLAGS)
 
+ADB := $(if $(ADB), $(ADB), adb)
+
 all: run injector libhookzygote.so
 
 injector: injector32.o injector64.o
@@ -29,6 +31,43 @@ endif
 
 %64.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $^
+
+install:
+	$(ADB) root
+ifeq ($(shell $(ADB) shell whoami), root)
+	$(ADB) shell mount -o rw,remount /system
+ifneq (, $(findstring arm, $(shell $(ADB) shell uname -m)))
+	$(ADB) push ./bin/armv7a/injector /data/local/tmp
+	$(ADB) shell chmod 777 /data/local/tmp/injector
+	$(ADB) push ./bin/armv7a/libhookzygote.so /system/lib
+	$(ADB) shell chmod 644 /system/lib/libhookzygote.so
+endif
+ifeq ($(shell $(ADB) shell uname -m), aarch64)
+	$(ADB) push ./bin/aarch64/injector /data/local/tmp
+	$(ADB) shell chmod 777 /data/local/tmp/injector
+	$(ADB) push ./bin/aarch64/libhookzygote32.so /system/lib/libhookzygote.so
+	$(ADB) shell chmod 644 /system/lib/libhookzygote.so
+	$(ADB) push ./bin/aarch64/libhookzygote.so /system/lib64/libhookzygote.so
+	$(ADB) shell chmod 644 /system/lib64/libhookzygote.so
+endif
+	$(ADB) shell mount -o ro,remount /system
+else
+	@echo Device is not rooting
+endif
+
+uninstall:
+	$(ADB) root
+ifeq ($(shell $(ADB) shell whoami), root)
+	$(ADB) shell mount -o rw,remount /system
+	$(ADB) shell rm /data/local/tmp/injector
+	$(ADB) shell rm /system/lib/libhookzygote.so
+ifeq ($(shell $(ADB) shell uname -m), aarch64)
+	$(ADB) shell rm /system/lib64/libhookzygote.so
+endif
+	$(ADB) shell mount -o ro,remount /system
+else
+	@echo Device is not rooting
+endif
 
 run:
 	@mkdir bin
