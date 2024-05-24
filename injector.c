@@ -312,7 +312,7 @@ void manipulation_zygote_envp(pid_t zygote_pid)
                 if (strncmp("LD_PRELOAD", env, 10) == 0)
                 {
                     PTRACE(PTRACE_POKEDATA, zygote_pid, regs.ARG2 + (i - 1) * sizeof(void *), regs.STACK_POINTER - 2048);
-                    strcat(env, status ? ":/data/local/tmp/libhookzygote64.so" : ":/data/local/tmp/libhookzygote32.so");
+                    strcat(env, ":libhookzygote.so");
 
                     write_string(zygote_pid, regs.STACK_POINTER - 2048, env);
                 }
