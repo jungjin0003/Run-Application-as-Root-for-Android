@@ -9,7 +9,8 @@ The Android versions that have confirmed the current behavior are as follows
 |    AArch64 | 7.1 (Nougat)      |
 
 ## Getting Started
-Please follow the following procedure to use RARA
+Please follow the following procedure to use RARA \
+[Click here to download compiled files](https://github.com/jungjin0003/Run-Application-as-Root-for-Android/releases/latest) and if you're donw downloading it, [proceed from here](#rara-install)
 
 ### Compile Requisities
  - Android NDK version 21 (Errors may occur in later version, Someone tell me how should change the code)
@@ -36,6 +37,7 @@ $ make
 
 ### RARA Install
 If the adb path is not registered in the PATH environment variable, please set the entire path of adb in the registration or ADB environment variable \
+If you download and proceed with the compiled file, proceed with the contents of `Release file` \
 \
 Windows
 ```
@@ -49,6 +51,24 @@ Linux
 $ make install
 or
 $ ADB=/PATH/TO/YOURS/adb make install
+```
+Release file
+```
+$ adb root
+$ adb shell mkdir /data/local/tmp
+armv7a====================================
+$ adb push injector /data/local/tmp
+$ adb shell mount -o rw,remount /system
+$ adb push libhookzygote.so /system/lib
+$ adb shell mount -o ro.remount /system
+==========================================
+aarch64===================================
+$ adb push injector /data/local/tmp
+$ adb shell mount -o rw,remount /system
+$ adb push libhookzygote32.so /system/lib
+$ adb push libhookzygote.so /system/lib64
+$ adb shell mount -o ro.remount /system
+==========================================
 ```
 
 ### Change SELinux mode
