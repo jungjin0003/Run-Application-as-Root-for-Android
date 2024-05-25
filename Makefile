@@ -33,38 +33,41 @@ endif
 	$(CC) $(CFLAGS) -c -o $@ $^
 
 install:
-	$(ADB) root
-ifeq ($(shell $(ADB) shell whoami), root)
-	$(ADB) shell mount -o rw,remount /system
+ifeq ($(shell $(ADB) shell "su -c whoami"), root)
+	$(ADB) shell "su -c 'mount -o rw,remount /system'"
 ifneq (, $(findstring arm, $(shell $(ADB) shell uname -m)))
 	$(ADB) push ./bin/armv7a/injector /data/local/tmp
-	$(ADB) shell chmod 777 /data/local/tmp/injector
-	$(ADB) push ./bin/armv7a/libhookzygote.so /system/lib
-	$(ADB) shell chmod 644 /system/lib/libhookzygote.so
+	$(ADB) push ./bin/armv7a/libhookzygote.so /data/local/tmp
+	$(ADB) shell "su -c 'cp /data/local/tmp/libhookzygote.so /system/lib'"
+	$(ADB) shell "su -c 'chmod 777 /data/local/tmp/injector'"
+	$(ADB) shell "su -c 'chmod 644 /system/lib/libhookzygote.so'"
+	$(ADB) shell "su -c 'rm /data/local/tmp/libhookzygote.so'"
 endif
 ifeq ($(shell $(ADB) shell uname -m), aarch64)
 	$(ADB) push ./bin/aarch64/injector /data/local/tmp
-	$(ADB) shell chmod 777 /data/local/tmp/injector
-	$(ADB) push ./bin/aarch64/libhookzygote32.so /system/lib/libhookzygote.so
-	$(ADB) shell chmod 644 /system/lib/libhookzygote.so
-	$(ADB) push ./bin/aarch64/libhookzygote.so /system/lib64/libhookzygote.so
-	$(ADB) shell chmod 644 /system/lib64/libhookzygote.so
+	$(ADB) push ./bin/aarch64/libhookzygote32.so /data/local/tmp
+	$(ADB) push ./bin/aarch64/libhookzygote.so /data/local/tmp
+	$(ADB) shell "su -c 'cp /data/local/tmp/libhookzygote32.so /system/lib/libhookzygote.so'"
+	$(ADB) shell "su -c 'cp /data/local/tmp/libhookzygote.so /system/lib64/libhookzygote.so'"
+	$(ADB) shell "su -c 'chmod 777 /data/local/tmp/injector'"
+	$(ADB) shell "su -c 'chmod 644 /system/lib/libhookzygote.so'"
+	$(ADB) shell "su -c 'chmod 644 /system/lib64/libhookzygote.so'"
+	$(ADB) shell "su -c 'rm /data/local/tmp/libhookzygote32.so /data/local/tmp/libhookzygote.so'"
 endif
-	$(ADB) shell mount -o ro,remount /system
+	$(ADB) shell "su -c 'mount -o ro,remount /system'"
 else
 	@echo Device is not rooting
 endif
 
 uninstall:
-	$(ADB) root
-ifeq ($(shell $(ADB) shell whoami), root)
-	$(ADB) shell mount -o rw,remount /system
-	$(ADB) shell rm /data/local/tmp/injector
-	$(ADB) shell rm /system/lib/libhookzygote.so
+ifeq ($(shell $(ADB) shell "su -c whoami"), root)
+	$(ADB) shell "su -c 'mount -o rw,remount /system'"
+	$(ADB) shell "su -c 'rm /data/local/tmp/injector'"
+	$(ADB) shell "su -c 'rm /system/lib/libhookzygote.so'"
 ifeq ($(shell $(ADB) shell uname -m), aarch64)
-	$(ADB) shell rm /system/lib64/libhookzygote.so
+	$(ADB) shell "su -c 'rm /system/lib64/libhookzygote.so'"
 endif
-	$(ADB) shell mount -o ro,remount /system
+	$(ADB) shell "su -c 'mount -o ro,remount /system'"
 else
 	@echo Device is not rooting
 endif
