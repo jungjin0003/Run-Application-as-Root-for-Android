@@ -32,6 +32,9 @@ int isRootApplication(pid_t uid)
     FILE *package_list = fopen("/data/system/packages.list", "r");
     FILE *root_app_list = fopen("/data/local/tmp/root_app.list", "r");
 
+    if (root_app_list == NULL)
+        root_app_list = fopen("/data/data/kr.crazyhacker.rara/files/root_app.list", "r");
+
     if (package_list == NULL || root_app_list == NULL)
         goto exit;
 
