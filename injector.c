@@ -225,7 +225,7 @@ int generate_new_zygote(pid_t zygote_pid)
 
         memset(&regs, NULL, sizeof(regs));
 
-        if (PTRACE(PTRACE_GETREGSET, INIT_PID, NT_PRSTATUS, &REGS) < 0)
+        if (PTRACE(PTRACE_GETREGS, INIT_PID, NT_PRSTATUS, &REGS) < 0)
         {
             puts("[-] Can't get process register information");
             return -1;
