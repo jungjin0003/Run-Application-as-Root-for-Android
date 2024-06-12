@@ -10,7 +10,8 @@ The Android versions that have confirmed the current behavior are as follows
 
 ## Getting Started
 Please follow the following procedure to use RARA \
-[Click here to download compiled files](https://github.com/jungjin0003/Run-Application-as-Root-for-Android/releases/latest) and if you're donw downloading it, [proceed from here](#rara-install)
+[Click here](https://github.com/jungjin0003/Run-Application-as-Root-for-Android/releases/latest) to download compiled files and if you're donw downloading it, [proceed from here](#rara-install) \
+To use automated applications on Android, [click here](https://github.com/snoopspy/rara/releases) to download APK
 
 ### Compile Requisities
  - Android NDK version 21 (Errors may occur in later version, Someone tell me how should change the code)
