@@ -11,7 +11,6 @@
 pid_t pid = -1;
 
 int (*origin_setresuid)(uid_t ruid, uid_t euid, uid_t suid);
-int (*origin_setresgid)(gid_t rgid, gid_t egid, gid_t sgid);
 int (*origin_prctl)(int option, ...);
 int (*origin_capset)(cap_user_header_t __hdr_ptr, const cap_user_data_t __data_ptr);
 
@@ -72,7 +71,14 @@ exit:
 int capset(cap_user_header_t __hdr_ptr, const cap_user_data_t __data_ptr)
 {
     if (pid == getpid())
-        return 0;
+    {
+        __data_ptr[0].effective = 0xffffffff;
+        __data_ptr[0].permitted = 0xffffffff;
+        __data_ptr[0].inheritable = 0xffffffff;
+        __data_ptr[1].effective = 0x3f;
+        __data_ptr[1].permitted = 0x3f;
+        __data_ptr[1].inheritable = 0x3f;
+    }
 
     if (origin_capset == NULL)
         origin_capset = dlsym(RTLD_NEXT, "capset");
@@ -104,26 +110,12 @@ int prctl(int option, ...)
 int setresuid(uid_t ruid, uid_t euid, uid_t suid)
 {
     if (isRootApplication(ruid))
-    {
         pid = getpid();
-        return 0;
-    }
-
-    dropCapabilitiesBoundingSet();
+    else
+        dropCapabilitiesBoundingSet();
 
 	if (origin_setresuid == NULL)
 		origin_setresuid = dlsym(RTLD_NEXT, "setresuid");
 
 	return origin_setresuid(ruid, euid, suid);
-}
-
-int setresgid(gid_t rgid, gid_t egid, gid_t sgid)
-{
-	if (isRootApplication(rgid))
-		return 0;
-	
-	if (origin_setresgid == NULL)
-		origin_setresgid = dlsym(RTLD_NEXT, "setresgid");
-
-	return origin_setresgid(rgid, egid, sgid);
 }
