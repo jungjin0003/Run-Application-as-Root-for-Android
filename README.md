@@ -7,6 +7,7 @@ The Android versions that have confirmed the current behavior are as follows
 |-----------:|:------------------|
 |     ARMv7a | 7.1 (Nougat)      |
 |    AArch64 | 7.1 (Nougat)      |
+|    AArch64 | 14                |
 
 ## Getting Started
 Please follow the following procedure to use RARA \
