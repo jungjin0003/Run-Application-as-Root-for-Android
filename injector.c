@@ -20,37 +20,28 @@
 
 #ifdef __arm__
 #define REGS            regs
-#define IS_RETURNED     1
 #define RETURN_VALUE    ARM_r0
 #define SYSCALL_NUMBER  ARM_r7
 #define CHECK_RETURNED  uregs[12]
 #define STACK_POINTER   ARM_sp
 #define ARG0            ARM_r0
+#define ARG1            ARM_r1
 #define ARG2            ARM_r2
 #elif __aarch64__
 #define PTRACE_GETREGS  PTRACE_GETREGSET
+#define PTRACE_SETREGS  PTRACE_SETREGSET
 #define REGS            iovecs
-#define IS_RETURNED     0
 #define RETURN_VALUE    regs[0]
 #define SYSCALL_NUMBER  regs[8]
 #define CHECK_RETURNED  regs[28]
 #define STACK_POINTER   sp
 #define ARG0            regs[0]
+#define ARG1            regs[1]
 #define ARG2            regs[2]
 #endif
 
 #define PTRACE(r, p, a, d) internal_ptrace(r, p, a, d)
 
-int status;
-#ifdef __aarch64__
-void handler(int sig)
-{
-    if (sig == SIGUSR1)
-        status = 1;
-    else if (sig == SIGUSR2)
-        status = 2;
-}
-#endif
 int get_zygote_pid(int arch)
 {
     char fname[64];
@@ -125,7 +116,7 @@ void write_string(pid_t pid, void *addr, const char *buf)
 {
     for (int i = 0;; i += sizeof(long))
     {
-        PTRACE(PTRACE_POKEDATA, pid, (char *)addr + i, *(long *)(buf + i));
+        PTRACE(PTRACE_POKEDATA, pid, (char *)addr + i, (void *)*(long *)(buf + i));
 
         if (i >= strlen(buf))
             break;
@@ -134,55 +125,72 @@ void write_string(pid_t pid, void *addr, const char *buf)
 
 void *monitor_new_zygote(void *arg)
 {
+#ifdef __arm__
+    #define ARCHITECTURE ARM + 1
+#elif __aarch64__
+    #define ARCHITECTURE AARCH64 + 1
+#endif
     int bSuccessLD_PRELOAD = 0;
     char zygote_path[32];
     char line[256];
-    pid_t prev_zygote_pid = -1;
-    pid_t cur_zygote_pid = -1;
+    pid_t prev_zygote_pid[ARCHITECTURE];
+    pid_t cur_zygote_pid[ARCHITECTURE];
 
     while (1)
     {
         sleep(1);
-        cur_zygote_pid = get_zygote_pid(status);
 
-        if (cur_zygote_pid == -1)
+        for (int i = 0; i < ARCHITECTURE; i++)
+            cur_zygote_pid[i] = get_zygote_pid(i);
+
+        if (ARCHITECTURE - 1 == ARM ? cur_zygote_pid[ARM] == -1 : (cur_zygote_pid[ARM] == -1 || cur_zygote_pid[AARCH64] == -1))
             continue;
 
-        if (prev_zygote_pid == cur_zygote_pid)
+        if (ARCHITECTURE - 1 == ARM ? prev_zygote_pid[ARM] == cur_zygote_pid[ARM] : (prev_zygote_pid[ARM] == cur_zygote_pid[ARM] && prev_zygote_pid[AARCH64] == cur_zygote_pid[AARCH64]))
             continue;
 
-        prev_zygote_pid = cur_zygote_pid;
+        prev_zygote_pid[ARM] = cur_zygote_pid[ARM];
+#ifdef __aarch64__
+        prev_zygote_pid[AARCH64] = cur_zygote_pid[AARCH64];
+#endif
 
-        memset(zygote_path, NULL, sizeof(zygote_path));
-        sprintf(zygote_path, "/proc/%d/maps", cur_zygote_pid);
-
-        FILE *fp = fopen(zygote_path, "r");
-
-        if (fp == NULL)
-            continue;
-
-        while (fgets(line, sizeof(line), fp) != NULL)
+        for (int i = 0; i < ARCHITECTURE; i++)
         {
-            if (strstr(line, "libhookzygote"))
+            memset(zygote_path, (int)NULL, sizeof(zygote_path));
+            sprintf(zygote_path, "/proc/%d/maps", cur_zygote_pid[i]);
+
+            FILE *fp = fopen(zygote_path, "r");
+
+            if (fp == NULL)
             {
-                bSuccessLD_PRELOAD = 1;
-                break;
+                printf("[-] Failed to open %s : %s\n", zygote_path, strerror(errno));
+                continue;
             }
+
+            while (fgets(line, sizeof(line), fp) != NULL)
+            {
+                if (strstr(line, "libhookzygote"))
+                {
+                    bSuccessLD_PRELOAD = 1;
+                    break;
+                }
+            }
+            
+            fclose(fp);
+            
+            if (bSuccessLD_PRELOAD == 0)
+                break;
         }
 
-        fclose(fp);
-#ifdef __arm__
         if (bSuccessLD_PRELOAD)
             break;
-#elif __aarch64__
-        if (bSuccessLD_PRELOAD && arg == NULL)
-            break;
-
-        if (bSuccessLD_PRELOAD && arg && status == 2)
-            break;
+        else if (arg == NULL)
+        {
+            kill(cur_zygote_pid[ARM], SIGKILL);
+#ifdef __aarch64__
+            kill(cur_zygote_pid[AARCH64], SIGKILL);
 #endif
-        if (!bSuccessLD_PRELOAD && arg)
-            kill(cur_zygote_pid, SIGKILL);
+        }
     }
 
     exit(0);
@@ -201,7 +209,7 @@ int generate_new_zygote(pid_t zygote_pid)
 
     siginfo_t sig;
 
-    if (PTRACE(PTRACE_ATTACH, INIT_PID, 1, NULL) < 0)
+    if (PTRACE(PTRACE_ATTACH, INIT_PID, (void *)1, NULL) < 0)
     {
         puts("[-] PTRACE_ATTACH failed to init process");
         return -1;
@@ -211,33 +219,33 @@ int generate_new_zygote(pid_t zygote_pid)
     puts("[*] Sending a SIGKILL signal to zygote");
 
     pthread_t thread_t;
-    pthread_create(&thread_t, NULL, monitor_new_zygote, 1);
+    pthread_create(&thread_t, NULL, monitor_new_zygote, NULL);
 
     while (1)
     {
-        memset(&sig, NULL, sizeof(siginfo_t));
+        memset(&sig, (int)NULL, sizeof(siginfo_t));
 
-        if (!PTRACE(PTRACE_GETSIGINFO, INIT_PID, 0, &sig) && sig.si_signo == SIGCHLD && PTRACE(PTRACE_SYSCALL, INIT_PID, NT_PRSTATUS, SIGCHLD) < 0)
+        if (!PTRACE(PTRACE_GETSIGINFO, INIT_PID, (void *)0, &sig) && sig.si_signo == SIGCHLD && PTRACE(PTRACE_SYSCALL, INIT_PID, (void *)NT_PRSTATUS, (void *)SIGCHLD) < 0)
         {
             puts("[-] Can't detect signal or syscall");
             return -1;
         }
 
-        memset(&regs, NULL, sizeof(regs));
+        memset(&regs, (int)NULL, sizeof(regs));
 
-        if (PTRACE(PTRACE_GETREGS, INIT_PID, NT_PRSTATUS, &REGS) < 0)
+        if (PTRACE(PTRACE_GETREGS, INIT_PID, (void *)NT_PRSTATUS, &REGS) < 0)
         {
             puts("[-] Can't get process register information");
             return -1;
         }
 
-        if (regs.SYSCALL_NUMBER == SYS_clone && regs.CHECK_RETURNED == IS_RETURNED && regs.RETURN_VALUE <= MAX_PID && zygote_pid != regs.RETURN_VALUE)
+        if (regs.SYSCALL_NUMBER == SYS_clone && regs.RETURN_VALUE <= MAX_PID && zygote_pid != regs.RETURN_VALUE)
         {
             zygote_pid = regs.RETURN_VALUE;
 
             if (fork() == 0)
             {
-                pthread_create(&thread_t, NULL, monitor_new_zygote, NULL);
+                pthread_create(&thread_t, NULL, monitor_new_zygote, 1);
                 printf("[*] Found a new process : %ld\n", regs.RETURN_VALUE);
                 zygote_pid = regs.RETURN_VALUE;
                 return zygote_pid;
@@ -273,7 +281,7 @@ void manipulation_zygote_envp(pid_t zygote_pid)
     iovecs.iov_len = sizeof(regs);
 #endif
 
-    if (PTRACE(PTRACE_ATTACH, zygote_pid, 1, NULL) < 0)
+    if (PTRACE(PTRACE_ATTACH, zygote_pid, (void *)1, NULL) < 0)
     {
         printf("[-] New zygote64 attach failed\n");
         return;
@@ -281,49 +289,67 @@ void manipulation_zygote_envp(pid_t zygote_pid)
 
     while (1)
     {
-        PTRACE(PTRACE_SYSCALL, zygote_pid, 1, NULL);
-        PTRACE(PTRACE_GETREGS, zygote_pid, NT_PRSTATUS, &REGS);
+        PTRACE(PTRACE_SYSCALL, zygote_pid, (void *)1, NULL);
+        PTRACE(PTRACE_GETREGS, zygote_pid, (void *)NT_PRSTATUS, &REGS);
 
         if (regs.SYSCALL_NUMBER == SYS_execve)
         {
             char filename[100];
-            read_string(zygote_pid, regs.ARG0, filename, sizeof(filename));
+            read_string(zygote_pid, (void *)regs.ARG0, filename, sizeof(filename));
 
             printf("[*] detect execve : %s\n", filename);
 #ifdef __arm__
             if (strcmp(filename, "/system/bin/app_process"))
                 break;
 #elif __aarch64__
-            if (strcmp(filename, "/system/bin/app_process32") && status != 1)
+            if (strcmp(filename, "/system/bin/app_process32") && strcmp(filename, "/system/bin/app_process64"))
                 break;
-            else if (strcmp(filename, "/system/bin/app_process64") && status != 0)
-                break;
-
-            kill(getppid(), status ? SIGUSR2 : SIGUSR1);
 #endif
-            for (int i = 0, *envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.ARG2 + i * sizeof(void *), NULL); envp; envp = PTRACE(PTRACE_PEEKDATA, zygote_pid, regs.ARG2 + i * sizeof(void *), NULL))
+            int envc = 0, injected = 0;
+            for (int *envp = (int *)PTRACE(PTRACE_PEEKDATA, zygote_pid, (void *)(regs.ARG2 + envc * sizeof(void *)), NULL); envp; envp = (int *)PTRACE(PTRACE_PEEKDATA, zygote_pid, (void *)(regs.ARG2 + ++envc * sizeof(void *)), NULL))
             {
-                char *env = malloc(1024);
-                memset(env, NULL, 1024);
+                char *env = malloc(4096);
+                memset(env, (int)NULL, 4096);
 
-                read_string(zygote_pid, envp, env, 1024);
-                printf("[*] envp[%d] : %s\n", i++, env);
+                read_string(zygote_pid, envp, env, 4096);
 
                 if (strncmp("LD_PRELOAD", env, 10) == 0)
                 {
-                    PTRACE(PTRACE_POKEDATA, zygote_pid, regs.ARG2 + (i - 1) * sizeof(void *), regs.STACK_POINTER - 2048);
+                    PTRACE(PTRACE_POKEDATA, zygote_pid, (void *)(regs.ARG2 + envc * sizeof(void *)), (void *)(regs.STACK_POINTER - 2048));
                     strcat(env, ":libhookzygote.so");
 
-                    write_string(zygote_pid, regs.STACK_POINTER - 2048, env);
+                    write_string(zygote_pid, (void *)(regs.STACK_POINTER - 2048), env);
+                    injected = 1;
                 }
 
                 free(env);
             }
 
+            if (!injected)
+            {
+                printf("[*] Injecting LD_PRELOAD into zygote...\n");
+                char *envp = (char *)regs.ARG2;
+                char *new_envp = (char *)((regs.STACK_POINTER - 2048) & ~0xF);
+
+                for (int i = 0; i < envc; i++)
+                {
+                    long env = PTRACE(PTRACE_PEEKDATA, zygote_pid, (void *)(envp + i * sizeof(void *)), NULL);
+                    PTRACE(PTRACE_POKEDATA, zygote_pid, (void *)(new_envp + i * sizeof(void *)), (void *)env);
+                }
+
+                PTRACE(PTRACE_POKEDATA, zygote_pid, new_envp + envc * sizeof(void *), new_envp + (envc + 2) * sizeof(void *));
+                PTRACE(PTRACE_POKEDATA, zygote_pid, new_envp + (envc + 1) * sizeof(void *), NULL);
+                write_string(zygote_pid, new_envp + (envc + 2) * sizeof(void *), "LD_PRELOAD=libhookzygote.so");
+
+                regs.ARG2 = (unsigned long)new_envp;
+                PTRACE(PTRACE_SETREGS, zygote_pid, (void *)NT_PRSTATUS, &REGS);
+                PTRACE(PTRACE_GETREGS, zygote_pid, (void *)NT_PRSTATUS, &REGS);
+            }
+
             break;
         }
 
-        PTRACE(PTRACE_SYSCALL, zygote_pid, 1, NULL);
+        PTRACE(PTRACE_SYSCALL, zygote_pid, (void *)1, NULL);
     }
 
     PTRACE(PTRACE_DETACH, zygote_pid, NULL, NULL);
@@ -331,10 +357,6 @@ void manipulation_zygote_envp(pid_t zygote_pid)
 
 int main()
 {
-#ifdef __aarch64__
-    signal(SIGUSR1, handler);
-    signal(SIGUSR2, handler);
-#endif
     pid_t zygote_pid = get_zygote_pid(ARM);
 
     puts("[*] Get the zygote pid...");
